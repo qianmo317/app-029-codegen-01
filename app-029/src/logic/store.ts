@@ -6,6 +6,7 @@
 import materialsData from '../data/materials.json'
 import type { Preset } from './materials'
 import { defaultProject } from './layout'
+import { defaultStructuralCfg } from './structural'
 import type { Project } from './types'
 
 const KEY_PROJECTS = 'app029.projects.v1'
@@ -36,8 +37,22 @@ function writeJson(key: string, value: unknown): void {
   }
 }
 
+function migrateProject(p: Project): Project {
+  const cfg = p.structural
+  if (!cfg) {
+    p.structural = defaultStructuralCfg()
+  } else {
+    if (!cfg.reviews) cfg.reviews = []
+    if (!cfg.reviewerTitle) cfg.reviewerTitle = '结构负责人'
+    if (!cfg.materialId) cfg.materialId = 'aluminum_plastic'
+    if (!Number.isFinite(cfg.thicknessMm)) cfg.thicknessMm = 3
+    if (!Number.isFinite(cfg.clearanceMm)) cfg.clearanceMm = 3000
+  }
+  return p
+}
+
 export function listProjects(): Project[] {
-  const list = readJson<Project[]>(KEY_PROJECTS, [])
+  const list = readJson<Project[]>(KEY_PROJECTS, []).map(migrateProject)
   return list.sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
@@ -90,6 +105,7 @@ export function createProject(name: string, panel?: { wMm?: number; hMm?: number
 function mergePreset(base: Preset, patch: Partial<Preset>): Preset {
   const out: Preset = JSON.parse(JSON.stringify(base))
   if (patch.process) out.process = { ...out.process, ...patch.process }
+  if (patch.structural) out.structural = { ...out.structural, ...patch.structural, materials: patch.structural.materials ?? out.structural.materials }
   if (patch.acrylicSheets) out.acrylicSheets = patch.acrylicSheets
   if (patch.ledModules) out.ledModules = patch.ledModules
   if (patch.psu) out.psu = { ...out.psu, ...patch.psu }

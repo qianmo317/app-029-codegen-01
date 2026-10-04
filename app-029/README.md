@@ -57,6 +57,7 @@ app-029/
     │   ├── fontLoader.ts      本地字体加载/解析/缓存（失败即提示「该字体不可用」）
     │   ├── layout.ts          排版引擎（视觉间距求解、两端对齐、自动字号、逐字微调）
     │   ├── led.ts             LED 与电源计算（含档位与多电源提示）
+    │   ├── structural.ts      门头结构安全核定（保守/计算档、G1~G4、拉结/龙骨/斜撑、重核留痕）
     │   ├── nesting.ts         亚克力板材分层装箱（guillotine）与利用率
     │   ├── materials.ts       材料清单（BOM，整数「分」）与多材质对照
     │   ├── quote.ts           报价单/工艺卡导出（打印 PDF、.xls、CSV）
@@ -65,11 +66,11 @@ app-029/
     │   ├── store.ts           localStorage 项目与预设
     │   └── useSession.ts      页面会话（字体就绪 → 排版/BOM 派生、自动保存）
     ├── components/     PanelPreview.vue（按真实比例预览/标注/着色/布点）、SheetDiagram.vue（拼版图）
-    └── views/          HomeView（新建+批量）、EditView（排版）、LightView、MaterialsView、
+    └── views/          HomeView（新建+批量）、EditView（排版）、LightView、SafetyView（结构核定）、MaterialsView、
                         QuoteView、FontsView（本地字库）、PresetsView（材质工艺+验收自检）
 ```
 
-页面路由：`/`、`/edit/:id`、`/light/:id`、`/materials/:id`、`/quote/:id`、`/fonts`、`/presets`。
+页面路由：`/`、`/edit/:id`、`/light/:id`、`/safety/:id`、`/materials/:id`、`/quote/:id`、`/fonts`、`/presets`。
 
 ## 关键实现说明
 
@@ -82,6 +83,7 @@ app-029/
 - **LED 模组数**：`N = ceil(L / 模组间距)`（向上取整显式提示「因布点不足补足 N 个」），
   `额定功率 = N × 单模组功率 × 安全系数`，`电源功率 = 额定功率 / 效率` 再按标准档位（60/100/150/200/300/400W）向上取，
   超出档位提示「需多电源并联/分区供电」。公式在界面上同步展示，可复算。
+- **结构安全核定**：按总宽总高（mm 取整）、离地高度、安装方式、面板材质与厚度计算受风面积、风力、G1~G4 加固等级及龙骨/斜撑/立柱/拉结点数。**保守档**按偏保守系数加安全余量并升一档，免逐单复核；**计算档**必须写明翻档条件、复核责任人与留痕。未通过（面积/高度/材质/安装/排版超限）会拦截材料与报价，并反算当前条件最大尺寸、推荐分格和可替换材质；尺寸改动后旧版本自动失效，仅最新核定结论驱动 BOM、报价和导出清单。
 - **板材拼版**：异形字按**外接矩形**下料（每个连通域一件，不用轮廓面积），料层横向贯通的一刀切分层装箱，
   输出板数、利用率与裁切清单；单件超板显式报错。
 - **金额**：内部一律整数「分」，`Σ 明细金额 = 合计`（自检断言，无浮点误差）。

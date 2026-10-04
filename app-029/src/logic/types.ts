@@ -15,6 +15,97 @@ export interface SignPanel {
   frameMm: number
 }
 
+export type StructuralRoute = 'conservative' | 'calculated'
+export type StructuralMaterialId = 'acrylic' | 'aluminum_plastic' | 'aluminum_composite' | 'steel' | 'pvc' | 'film'
+
+export interface StructuralCfg {
+  /** 面板/底板底面离地高度 mm */
+  clearanceMm: number
+  materialId: StructuralMaterialId
+  thicknessMm: number
+  route: StructuralRoute
+  /** 计算档翻档后由谁担责 */
+  reviewer: string
+  reviewerTitle: string
+  /** 已出具核定结论的版本；参数变化后自动失效 */
+  reviews: StructuralReviewRecord[]
+}
+
+export interface StructuralRequirement {
+  qty: number
+  unit: string
+  spec: string
+  note: string
+}
+
+export interface StructuralGridCell {
+  no: number
+  wMm: number
+  hMm: number
+}
+
+export interface StructuralBlockReason {
+  code: 'area' | 'height' | 'material' | 'mounting' | 'layout'
+  message: string
+  limitText: string
+  actualText: string
+}
+
+export interface StructuralResult {
+  wMm: number
+  hMm: number
+  topHeightMm: number
+  areaM2: number
+  occupiedWMm: number
+  occupiedHMm: number
+  aspectRatio: number
+  slenderness: number
+  demandKn: number
+  windPressureKpa: number
+  heightFactor: number
+  mountingFactor: number
+  materialFactor: number
+  effectiveThicknessMm: number
+  grade: 1 | 2 | 3 | 4
+  conservativeGrade: 1 | 2 | 3 | 4
+  tiePoints: number
+  keel: StructuralRequirement
+  braces: StructuralRequirement
+  posts: StructuralRequirement | null
+  anchors: StructuralRequirement
+  requirements: StructuralRequirement[]
+  blockReasons: StructuralBlockReason[]
+  approved: boolean
+  maxWidthMm: number
+  maxHeightMm: number
+  maxAreaM2: number
+  compatibleMaterials: string[]
+  gridCols: number
+  gridRows: number
+  gridCells: StructuralGridCell[]
+  escalation: string[]
+  reviewer: string
+  reviewerTitle: string
+  route: StructuralRoute
+  materialName: string
+  materialMatched: boolean
+  warnings: string[]
+  formula: string[]
+  fingerprint: string
+}
+
+export interface StructuralReviewRecord {
+  version: number
+  issuedAt: number
+  route: StructuralRoute
+  result: StructuralResult
+  fingerprint: string
+  reviewer: string
+  reviewerTitle: string
+  superseded: boolean
+  trace: string
+}
+
 /** 逐字项；line 为行号、seq 为全文字序（多行扩展，供逐字微调定位用） */
 export interface CharItem {
   char: string
@@ -73,7 +164,7 @@ export interface LedResult {
   psuUnitW: number
 }
 
-export type MaterialKind = 'acrylic' | 'led_module' | 'psu' | 'glue' | 'labor'
+export type MaterialKind = 'acrylic' | 'led_module' | 'psu' | 'glue' | 'labor' | 'structure'
 
 export interface Material {
   kind: MaterialKind
@@ -126,6 +217,7 @@ export interface Project {
   panelMaterialId: string
   sheetId: string
   ledModuleId: string
+  structural: StructuralCfg
   createdAt: number
   updatedAt: number
 }

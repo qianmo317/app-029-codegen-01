@@ -29,7 +29,10 @@ const draft = ref({
   weight: prefs.defaultWeight,
   baseSizeMm: 300,
   align: 'center' as Align,
-  trackRatio: 0.1
+  trackRatio: 0.1,
+  clearanceMm: 3000,
+  structuralMaterial: 'aluminum_plastic',
+  structuralThicknessMm: 3
 })
 
 const fonts = computed(() => listFonts())
@@ -56,16 +59,21 @@ function create(): void {
     error.value = '请至少输入一个字符'
     return
   }
-  if (draft.value.wMm <= draft.value.frameMm * 2 || draft.value.hMm <= draft.value.frameMm * 2) {
+  const wMm = Math.round(draft.value.wMm)
+  const hMm = Math.round(draft.value.hMm)
+  if (wMm <= draft.value.frameMm * 2 || hMm <= draft.value.frameMm * 2) {
     error.value = '门头尺寸必须大于边框的两倍（有效安装区不能为负）'
     return
   }
   const p = createProject(draft.value.name.trim() || '新门头', {
-    wMm: draft.value.wMm,
-    hMm: draft.value.hMm,
+    wMm,
+    hMm,
     frameMm: draft.value.frameMm
   })
   p.layout.panel.mounting = draft.value.mounting
+  p.structural.clearanceMm = Math.max(0, Math.round(draft.value.clearanceMm))
+  p.structural.materialId = draft.value.structuralMaterial as Project['structural']['materialId']
+  p.structural.thicknessMm = draft.value.structuralThicknessMm
   p.layout.settings.fontId = draft.value.fontId
   p.layout.settings.weight = draft.value.weight
   p.layout.settings.baseSizeMm = draft.value.baseSizeMm
@@ -129,6 +137,7 @@ const batchRows = computed(() => {
     return { project: p, layout: lay, bom }
   })
 })
+const pendingStructural = computed(() => batchRows.value.filter((r) => r.bom.blocked && r.bom.blockReasons.some((x) => x.includes('结构'))).length)
 
 const batchTotal = computed(() => {
   const rows = batchRows.value
@@ -197,6 +206,23 @@ function applyUnified(): void {
               <option value="wall">贴墙安装</option>
               <option value="board">挂板安装</option>
               <option value="freestanding">落地立牌</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>离地高度（mm）</label>
+          <div class="ctl"><input type="number" v-model.number="draft.clearanceMm" min="0" step="100" /></div>
+        </div>
+        <div class="field">
+          <label>面板材质 / 厚度</label>
+          <div class="ctl">
+            <select v-model="draft.structuralMaterial">
+              <option v-for="m in preset.structural.materials" :key="m.id" :value="m.id">{{ m.name }}</option>
+            </select>
+            <select v-model.number="draft.structuralThicknessMm">
+              <option v-for="t in (preset.structural.materials.find((m) => m.id === draft.structuralMaterial)?.thicknesses ?? [0])" :key="t" :value="t">
+                {{ t === 0 ? '依附基层' : `${t}mm` }}
+              </option>
             </select>
           </div>
         </div>
@@ -303,6 +329,9 @@ function applyUnified(): void {
       </div>
       <p class="muted" v-if="batchRows.length === 0">勾选 2 个以上项目可汇总板材、LED 与报价。</p>
       <template v-else>
+        <p v-if="pendingStructural" class="banner bad">
+          有 {{ pendingStructural }} 个项目未通过或未出具结构核定；下表仅作预检，正式材料/报价必须先在项目内完成结构重核。
+        </p>
         <table>
           <thead>
             <tr>

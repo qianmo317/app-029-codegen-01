@@ -10,6 +10,7 @@ import { computeLayout, defaultProject, textToItems, type LayoutResult } from '.
 import { assertBomSum, buildBom, compareMaterials, defaultPreset, type Preset } from './materials'
 import { nestPieces, type Piece } from './nesting'
 import { runBlockCount, type BlockCountResult } from './testRunner'
+import { activeStructuralReview, computeStructural, isStructuralReviewCurrent, issueStructuralReview } from './structural'
 import type { LayoutDef, Project } from './types'
 import type { Ring } from './geometry'
 import { pointInRings } from './geometry'
@@ -231,6 +232,7 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
     const r = computeLayout(p.layout)
     const thin = r.glyphs.filter((g) => g.minStrokeMm < p.layout.settings.strokeLimitMm)
     const warnOk = r.warnings.some((w) => w.includes('工艺下限'))
+    issueStructuralReview(p, computeStructural(p, r, preset.structural))
     const bomBlocked = buildBom(p, r, preset)
     const bomOk = buildBom(p, r, preset, { acknowledgeThinStroke: true })
     checks.push({
@@ -310,6 +312,7 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
   {
     const p = makeProject('acc7', '广告招牌制作', 300)
     const lay: LayoutResult = computeLayout(p.layout, { autoSize: true })
+    issueStructuralReview(p, computeStructural(p, lay, preset.structural))
     const bom = buildBom(p, lay, preset)
     const sum = assertBomSum(bom)
     const handSum = bom.materials.reduce((s, m) => s + m.amountCents, 0)
@@ -367,6 +370,7 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
   {
     const p = makeProject('acc9', '广告招牌制作', 300)
     const lay = computeLayout(p.layout, { autoSize: true })
+    issueStructuralReview(p, computeStructural(p, lay, preset.structural))
     const bom = buildBom(p, lay, preset)
     const cmp = compareMaterials(p, lay, preset, bom)
     checks.push({
@@ -375,6 +379,86 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
       pass: cmp.every((c) => c.totalCents === c.panelCents + c.ledCents + c.psuCents + c.accessoryCents + c.laborCents),
       detail: `${cmp.length} 种材质`,
       evidence: cmp.map((c) => `${c.name}：面板 ${(c.panelCents / 100).toFixed(2)} + LED ${(c.ledCents / 100).toFixed(2)} + 电源 ${(c.psuCents / 100).toFixed(2)} + 配件 ${(c.accessoryCents / 100).toFixed(2)} + 加工 ${(c.laborCents / 100).toFixed(2)} = ¥${(c.totalCents / 100).toFixed(2)}`)
+    })
+  }
+
+  // ---------- 11. 结构安全核定 ----------
+  {
+    const ev: string[] = []
+    const small = makeProject('acc11a', '广告招牌', 240, 'center', { wMm: 3000, hMm: 800, frameMm: 60 })
+    small.layout.panel.mounting = 'wall'
+    small.structural.route = 'calculated'
+    small.structural.materialId = 'aluminum_plastic'
+    small.structural.thicknessMm = 3
+    small.structural.clearanceMm = 3000
+    const smallLay = computeLayout(small.layout, { autoSize: true })
+    const smallRes = computeStructural(small, smallLay, preset.structural)
+    const gradeOk = smallRes.approved && smallRes.grade === 1 && smallRes.demandKn <= preset.structural.gradeDemandKn[0]
+    ev.push(`3000×800 贴墙铝塑板：面积 ${smallRes.areaM2}㎡，风力 ${smallRes.demandKn}kN → G${smallRes.grade}，拉结 ${smallRes.tiePoints}套`)
+
+    const freestanding = makeProject('acc11b', '广告招牌制作', 240, 'center', { wMm: 6000, hMm: 1200, frameMm: 60 })
+    freestanding.layout.panel.mounting = 'freestanding'
+    freestanding.structural.route = 'calculated'
+    freestanding.structural.materialId = 'aluminum_plastic'
+    freestanding.structural.thicknessMm = 3
+    freestanding.structural.clearanceMm = 3000
+    freestanding.structural.reviewer = '王工'
+    freestanding.structural.reviewerTitle = '结构负责人'
+    const freeLay = computeLayout(freestanding.layout, { autoSize: true })
+    const freeRes = computeStructural(freestanding, freeLay, preset.structural)
+    const freeOk = freeRes.approved && freeRes.grade >= 3 && freeRes.tiePoints >= 12
+    ev.push(`6000×1200 独立立牌：面积 ${freeRes.areaM2}㎡，风力 ${freeRes.demandKn}kN → G${freeRes.grade}，拉结 ${freeRes.tiePoints}套（安装最低 G3）`)
+
+    const thinAcrylic = makeProject('acc11c', '广告招牌制作', 240, 'center', { wMm: 5000, hMm: 1000, frameMm: 60 })
+    thinAcrylic.layout.panel.mounting = 'board'
+    thinAcrylic.structural.route = 'calculated'
+    thinAcrylic.structural.materialId = 'acrylic'
+    thinAcrylic.structural.thicknessMm = 3
+    thinAcrylic.structural.clearanceMm = 3000
+    const thinLay = computeLayout(thinAcrylic.layout, { autoSize: true })
+    const thinRes = computeStructural(thinAcrylic, thinLay, preset.structural)
+    const blockOk = !thinRes.approved && thinRes.blockReasons.some((b) => b.code === 'material')
+    ev.push(`5000×1000 挂板 3mm 亚克力：approved=${thinRes.approved}，${thinRes.blockReasons.map((b) => b.message).join('；')}`)
+    ev.push(`同条件反算：最多 ${thinRes.maxWidthMm}×${thinRes.maxHeightMm}mm，建议 ${thinRes.gridCols}×${thinRes.gridRows} 分格`)
+
+    const conservative = makeProject('acc11d', '广告招牌制作', 240, 'center', { wMm: 3000, hMm: 800, frameMm: 60 })
+    conservative.layout.panel.mounting = 'wall'
+    conservative.structural.route = 'conservative'
+    conservative.structural.materialId = 'aluminum_plastic'
+    conservative.structural.thicknessMm = 3
+    const consLay = computeLayout(conservative.layout, { autoSize: true })
+    const consRes = computeStructural(conservative, consLay, preset.structural)
+    const issue = issueStructuralReview(conservative, consRes)
+    const beforeTies = consRes.tiePoints
+    conservative.layout.panel.wMm = 3200
+    const changedLay = computeLayout(conservative.layout, { autoSize: true })
+    const changed = computeStructural(conservative, changedLay, preset.structural)
+    const staleOk = activeStructuralReview(conservative.structural)?.version === issue.version && !isStructuralReviewCurrent(issue, changed)
+    const bomBlockedOk = buildBom(conservative, changedLay, preset).blocked
+    const consBom = buildBom(conservative, consLay, preset)
+    const structuralBomOk =
+      consBom.materials.some((m) => m.kind === 'structure') &&
+      consBom.materials.filter((m) => m.kind === 'structure').some((m) => m.spec.includes(`v${issue.version}`)) &&
+      consBom.totalCents === consBom.materials.reduce((s, m) => s + m.amountCents, 0)
+    ev.push(`保守档结论 G${consRes.grade}/${beforeTies}套；宽改 3000→3200 后新版 G${changed.grade}/${changed.tiePoints}套，旧版 current=${isStructuralReviewCurrent(issue, changed)}，BOM blocked=${bomBlockedOk}`)
+    ev.push(`有效结论 BOM 含结构加固：${structuralBomOk}；加固条目 ${consBom.materials.filter((m) => m.kind === 'structure').length} 行`)
+
+    const pvcFree = makeProject('acc11e', '广告招牌', 200, 'center', { wMm: 2000, hMm: 800, frameMm: 60 })
+    pvcFree.layout.panel.mounting = 'freestanding'
+    pvcFree.structural.route = 'calculated'
+    pvcFree.structural.materialId = 'pvc'
+    pvcFree.structural.thicknessMm = 10
+    const pvcLay = computeLayout(pvcFree.layout, { autoSize: true })
+    const pvcRes = computeStructural(pvcFree, pvcLay, preset.structural)
+    const mountingBlockOk = pvcRes.blockReasons.some((b) => b.code === 'mounting')
+    ev.push(`PVC 独立立牌应按材质/安装不匹配拦截：${mountingBlockOk ? '通过' : '失败'}（${pvcRes.blockReasons.map((b) => b.message).join('；')}）`)
+
+    checks.push({
+      id: 'A11',
+      title: '结构安全核定：分档/拉结/保守档、面积高度材质拦截、反算分格、重核留痕与 BOM 同步',
+      pass: gradeOk && freeOk && blockOk && staleOk && bomBlockedOk && structuralBomOk && mountingBlockOk,
+      detail: `小牌 G${smallRes.grade}；立牌 G${freeRes.grade}；薄亚克力拦截=${blockOk}；旧版失效=${staleOk}`,
+      evidence: ev
     })
   }
 

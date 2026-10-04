@@ -40,6 +40,7 @@
 /                 新建门头（尺寸 + 文字）
 /edit/:id         排版编辑（预览 + 字号/字距微调 + 字形分析）
 /light/:id        LED 与电源计算
+/safety/:id       结构安全核定（加固等级、拉结、斜撑、翻档责任与留痕）
 /materials/:id    材料清单与板材拼版
 /quote/:id        报价单（可打印）
 /fonts            本地字库管理
@@ -61,6 +62,9 @@ type Layout = { panel: SignPanel; items: CharItem[]; align: 'left'|'center'|'rig
                 baseSizeMm: number; fontId: string; strokeLimitMm: number };
 type LedCfg = { moduleSpacingMm: number; modulePowerW: number; moduleLumen: number;
                 safetyFactor: number; psuEfficiency: number };
+type StructuralCfg = { clearanceMm: number; materialId: string; thicknessMm: number;
+                       route: 'conservative'|'calculated'; reviewer: string; reviewerTitle: string;
+                       reviews: StructuralReviewRecord[] };
 type LedResult = { perimeterTotalMm: number; modules: number; ratedW: number; recommendedW: number;
                    suggestedPsu: string; note: string };
 type Material = { kind: 'acrylic'|'led_module'|'psu'|'glue'|'labor'; spec: string; qty: number;

@@ -91,6 +91,51 @@ function removeSheet(i: number): void {
           <div class="ctl"><input type="number" v-model.number="preset.process.panelFrameMm" step="5" /></div>
         </div>
 
+        <h3 style="margin-top: 14px">结构核定参数</h3>
+        <div class="field">
+          <label>基本风压（kPa）</label>
+          <div class="ctl"><input type="number" v-model.number="preset.structural.basicWindPressureKpa" step="0.05" /></div>
+        </div>
+        <div class="field">
+          <label>G1/G2/G3/G4 风力阈值（kN）</label>
+          <div class="ctl">
+            <input
+              type="text"
+              :value="preset.structural.gradeDemandKn.join(',')"
+              style="width: 220px"
+              @change="
+                preset.structural.gradeDemandKn = [1.5, 3, 6, 12].map((fallback, i) => {
+                  const parsed = Number(($event.target as HTMLInputElement).value.split(',')[i] ?? '')
+                  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+                }) as [number, number, number, number]
+              "
+            />
+          </div>
+        </div>
+        <div class="field">
+          <label>最大宽高比 / 长细比</label>
+          <div class="ctl">
+            <input type="number" v-model.number="preset.structural.maxAspectRatio" step="0.1" style="width: 70px" />
+            <span class="muted">/</span>
+            <input type="number" v-model.number="preset.structural.maxSlenderness" step="0.1" style="width: 70px" />
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>结构面板材质</th><th class="num">最低厚</th><th class="num">系数</th><th class="num">最低档</th><th class="num">最大㎡</th><th class="num">最大宽</th><th class="num">最大高</th></tr></thead>
+          <tbody>
+            <tr v-for="m in preset.structural.materials" :key="m.id">
+              <td><input type="text" v-model="m.name" style="width: 130px" /></td>
+              <td class="num"><input type="number" v-model.number="m.minThicknessMm" step="0.5" style="width: 60px" /></td>
+              <td class="num"><input type="number" v-model.number="m.factor" step="0.05" style="width: 60px" /></td>
+              <td class="num"><input type="number" v-model.number="m.minGrade" min="1" max="4" step="1" style="width: 54px" /></td>
+              <td class="num"><input type="number" v-model.number="m.maxAreaM2" step="0.5" style="width: 64px" /></td>
+              <td class="num"><input type="number" v-model.number="m.maxWidthMm" step="100" style="width: 78px" /></td>
+              <td class="num"><input type="number" v-model.number="m.maxHeightMm" step="100" style="width: 78px" /></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="muted">改阈值后，旧结构核定指纹不会静默沿用；项目页会提示重新核定，材料和报价同步刷新。</p>
+
         <h3 style="margin-top: 14px">亚克力板材</h3>
         <table>
           <thead>

@@ -523,6 +523,15 @@ export function defaultProject(id: string, panel?: Partial<SignPanel>): Project 
     panelMaterialId: 'acrylic_led',
     sheetId: 'acr-1220x2440x3',
     ledModuleId: 'led-12v-072-60',
+    structural: {
+      clearanceMm: 3000,
+      materialId: 'aluminum_plastic',
+      thicknessMm: 3,
+      route: 'conservative',
+      reviewer: '',
+      reviewerTitle: '结构负责人',
+      reviews: []
+    },
     createdAt: Date.now(),
     updatedAt: Date.now()
   }

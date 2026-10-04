@@ -4,6 +4,7 @@ const routes: RouteRecordRaw[] = [
   { path: '/', name: 'home', component: () => import('../views/HomeView.vue') },
   { path: '/edit/:id', name: 'edit', component: () => import('../views/EditView.vue') },
   { path: '/light/:id', name: 'light', component: () => import('../views/LightView.vue') },
+  { path: '/safety/:id', name: 'safety', component: () => import('../views/SafetyView.vue') },
   { path: '/materials/:id', name: 'materials', component: () => import('../views/MaterialsView.vue') },
   { path: '/quote/:id', name: 'quote', component: () => import('../views/QuoteView.vue') },
   { path: '/fonts', name: 'fonts', component: () => import('../views/FontsView.vue') },

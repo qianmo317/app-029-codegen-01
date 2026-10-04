@@ -74,8 +74,9 @@ function toCsv(): void {
       </div>
 
       <div v-if="bom?.blocked" class="banner bad no-print">
-        <b>工艺风险拦截：</b>{{ bom.blockReasons.join('；') }}
-        <button class="primary" style="margin-left: 8px" @click="ack = true">已确认风险，继续出报价</button>
+        <b>工艺/结构拦截：</b>{{ bom.blockReasons.join('；') }}
+        <router-link v-if="!bom.structuralCurrent || !bom.structuralResult.approved" :to="`/safety/${project.id}`"><button class="primary" style="margin-left: 8px">去结构核定</button></router-link>
+        <button v-else class="primary" style="margin-left: 8px" @click="ack = true">已确认笔画风险，继续出报价</button>
       </div>
       <div v-else-if="ack" class="banner warn no-print">已确认工艺风险：最细笔画低于工艺下限的字符按加粗/换字体处理后再下单。</div>
 
@@ -100,6 +101,7 @@ function toCsv(): void {
             </div>
           </div>
           <p class="mono muted">排版结果：{{ doc.layoutText }}</p>
+          <p class="mono"><b>结构结论：</b>{{ doc.structuralText }}</p>
           <table style="margin-top: 8px">
             <thead>
               <tr>
@@ -162,6 +164,13 @@ function toCsv(): void {
             <span class="muted">字体</span><span>{{ fontLabel }} · 字重 {{ project.layout.settings.weight }} · 字号 {{ layout.sizeMm }}mm</span>
             <span class="muted">对齐</span><span>{{ alignLabel(project.layout.settings.align) }}</span>
             <span class="muted">排版</span><span class="mono">{{ doc.layoutText }}</span>
+            <span class="muted">结构核定</span><span class="mono">{{ doc.structuralText }}</span>
+            <span class="muted">结构加固</span>
+            <span class="mono" v-if="bom.structuralCurrent && bom.structuralResult.approved">
+              G{{ bom.structuralResult.grade }} · 分格 {{ bom.structuralResult.gridCols }}×{{ bom.structuralResult.gridRows }} ·
+              龙骨 {{ bom.structuralResult.keel.qty }}m · 拉结 {{ bom.structuralResult.tiePoints }}套
+            </span>
+            <span class="mono" v-else>未形成有效结论，不得下单</span>
             <span class="muted">LED</span>
             <span class="mono">
               布点 {{ bom.led.perimeterTotalMm }}mm · 模组 {{ bom.led.modules }} 只 · 额定 {{ bom.led.ratedW }}W · 电源

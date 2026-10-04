@@ -61,8 +61,9 @@ function processCard(): void {
         <ul class="notes" style="color: inherit">
           <li v-for="(r, i) in bom.blockReasons" :key="i">{{ r }}</li>
         </ul>
-        <button class="primary" style="margin-top: 6px" @click="ack = true">已确认工艺风险，继续出报价</button>
-        <span class="muted" style="margin-left: 8px">未确认前不出报价单（避免做不出来的活）</span>
+        <router-link v-if="!bom.structuralCurrent || !bom.structuralResult.approved" :to="`/safety/${project.id}`"><button class="primary" style="margin-top: 6px">去结构核定</button></router-link>
+        <button v-else class="primary" style="margin-top: 6px" @click="ack = true">已确认笔画工艺风险，继续出报价</button>
+        <span class="muted" style="margin-left: 8px">结构核定未通过时不能靠风险确认放行；仅最细笔画风险可在重核通过后确认。</span>
       </div>
 
       <div class="split">
@@ -87,6 +88,17 @@ function processCard(): void {
                 <option v-for="s in preset.acrylicSheets" :key="s.id" :value="s.id">{{ s.spec }}</option>
               </select>
             </div>
+          </div>
+          <div :class="['banner', bom?.structuralCurrent ? 'ok' : 'bad']" style="margin: 10px 0">
+            <template v-if="bom?.structuralCurrent && bom.structuralResult.approved">
+              <b>结构核定 v{{ bom.structuralReview?.version }}：{{ bom.structuralResult.route === 'conservative' ? '保守档' : '计算档' }} G{{ bom.structuralResult.grade }}，{{ bom.structuralResult.tiePoints }} 套拉结</b>
+              <div class="muted">龙骨 {{ bom.structuralResult.keel.qty }}m · 斜撑 {{ bom.structuralResult.braces.qty }}m · 已同步到下方材料与报价</div>
+            </template>
+            <template v-else>
+              <b>结构核定未通过或已失效</b>
+              <div class="muted">{{ bom?.blockReasons.find((r) => r.includes('结构')) || '请先出具有效结构核定' }}</div>
+            </template>
+            <router-link :to="`/safety/${project.id}`"><button class="primary" style="margin-top:6px">去结构核定</button></router-link>
           </div>
 
           <h3 style="margin-top: 12px">材料用量要点</h3>

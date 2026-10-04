@@ -12,6 +12,101 @@
     "warnTrackRatioLow": 0.04,
     "warnTrackRatioHigh": 0.35
   },
+  "structural": {
+    "basicWindPressureKpa": 0.35,
+    "gradeDemandKn": [1.5, 3.0, 6.0, 12.0],
+    "maxAspectRatio": 6.0,
+    "maxSlenderness": 8.0,
+    "maxGridWidthMm": 1200,
+    "maxGridHeightMm": 2400,
+    "defaultClearanceMm": 3000,
+    "materials": [
+      {
+        "id": "acrylic",
+        "name": "亚克力面板",
+        "thicknesses": [3, 5, 8, 10],
+        "minThicknessMm": 5,
+        "factor": 1.3,
+        "minGrade": 2,
+        "maxAreaM2": 6.0,
+        "maxWidthMm": 4000,
+        "maxHeightMm": 1800,
+        "mountings": ["wall", "board"],
+        "note": "大面积单块亚克力脆，需背附铝塑板和龙骨"
+      },
+      {
+        "id": "aluminum_plastic",
+        "name": "铝塑板",
+        "thicknesses": [3, 4, 5],
+        "minThicknessMm": 3,
+        "factor": 1.0,
+        "minGrade": 1,
+        "maxAreaM2": 12.0,
+        "maxWidthMm": 12000,
+        "maxHeightMm": 2400,
+        "mountings": ["wall", "board", "freestanding"],
+        "note": "门头常用底板，按板缝分格"
+      },
+      {
+        "id": "aluminum_composite",
+        "name": "铝单板/蜂窝铝板",
+        "thicknesses": [2, 2.5, 3],
+        "minThicknessMm": 2,
+        "factor": 0.9,
+        "minGrade": 1,
+        "maxAreaM2": 18.0,
+        "maxWidthMm": 15000,
+        "maxHeightMm": 3000,
+        "mountings": ["wall", "board", "freestanding"],
+        "note": "金属面板刚度较好，仍需背筋"
+      },
+      {
+        "id": "steel",
+        "name": "镀锌钢板/不锈钢板",
+        "thicknesses": [1, 1.5, 2, 3],
+        "minThicknessMm": 1.5,
+        "factor": 1.15,
+        "minGrade": 2,
+        "maxAreaM2": 15.0,
+        "maxWidthMm": 12000,
+        "maxHeightMm": 3000,
+        "mountings": ["wall", "board", "freestanding"],
+        "note": "自重大，挂件和立柱需单列"
+      },
+      {
+        "id": "pvc",
+        "name": "PVC 发泡板",
+        "thicknesses": [5, 8, 10, 15, 20],
+        "minThicknessMm": 10,
+        "factor": 1.1,
+        "minGrade": 2,
+        "maxAreaM2": 4.0,
+        "maxWidthMm": 3000,
+        "maxHeightMm": 1200,
+        "mountings": ["wall"],
+        "note": "仅限室内或低层贴墙，不做独立立牌"
+      },
+      {
+        "id": "film",
+        "name": "贴膜（依附基层）",
+        "thicknesses": [0],
+        "minThicknessMm": 0,
+        "factor": 1.0,
+        "minGrade": 1,
+        "maxAreaM2": 12.0,
+        "maxWidthMm": 12000,
+        "maxHeightMm": 2400,
+        "mountings": ["wall", "board"],
+        "note": "贴膜本身不承重，按其依附的铝塑板基层核定"
+      }
+    ],
+    "keelPriceCentsPerM": 2800,
+    "bracePriceCentsPerM": 3200,
+    "postPriceCentsPerM": 4600,
+    "anchorPriceCents": 180,
+    "tiePriceCents": 360,
+    "structureLaborCentsPerM2": 9500
+  },
   "acrylicSheets": [
     {
       "id": "acr-1220x2440x3",

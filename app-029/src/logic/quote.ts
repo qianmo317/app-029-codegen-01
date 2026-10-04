@@ -21,6 +21,8 @@ export function bomGroupLabel(kind: string): string {
       return '电源'
     case 'glue':
       return '胶与配件'
+    case 'structure':
+      return '结构加固'
     default:
       return '加工费'
   }
@@ -34,6 +36,8 @@ export interface QuoteDoc {
   panelText: string
   fontText: string
   layoutText: string
+  structuralText: string
+  structuralNotes: string[]
   rows: Array<{ group: string; spec: string; qty: string; unit: string; unitPrice: string; amount: string }>
   total: string
   notes: string[]
@@ -52,6 +56,18 @@ export function buildQuoteDoc(project: Project, layout: LayoutResult, bom: BomRe
     unitPrice: yuan(m.unitPriceCents),
     amount: yuan(m.amountCents)
   }))
+  const validStructural = bom.structuralReview && bom.structuralCurrent && bom.structuralResult.approved ? bom.structuralResult : null
+  const structuralText = validStructural
+    ? `结构核定 v${bom.structuralReview?.version ?? 0}（${bom.structuralResult.route === 'conservative' ? '保守档' : '计算档'}）：${bom.structuralResult.materialName} ${bom.structuralResult.effectiveThicknessMm}mm，顶部 ${bom.structuralResult.topHeightMm}mm，风力 ${bom.structuralResult.demandKn}kN，G${bom.structuralResult.grade}，拉结 ${bom.structuralResult.tiePoints} 套`
+    : '结构核定：未形成有效结论'
+  const structuralNotes = validStructural
+    ? [
+        structuralText,
+        `龙骨 ${validStructural.keel.qty}m；斜撑 ${validStructural.braces.qty}m；${validStructural.posts ? `立柱 ${validStructural.posts.qty}m；` : ''}锚栓/挂件 ${validStructural.anchors.qty}套；分格 ${validStructural.gridCols}×${validStructural.gridRows}`,
+        `复核/担责：${validStructural.reviewerTitle} ${validStructural.reviewer}；留痕：${bom.structuralReview?.trace ?? ''}`,
+        ...validStructural.warnings.map((w) => `结构提醒：${w}`)
+      ]
+    : ['结构核定未通过或未出具：不得下单、不得导出本报价']
   return {
     title: '招牌字制作报价单',
     projectName: project.name,
@@ -62,9 +78,12 @@ export function buildQuoteDoc(project: Project, layout: LayoutResult, bom: BomRe
     )}）`,
     fontText: `${fontLabel}　字重 ${project.layout.settings.weight}　字号 ${layout.sizeMm}mm（${alignLabel(project.layout.settings.align)}）`,
     layoutText: `占宽 ${layout.occupiedW}mm × 占高 ${layout.occupiedH}mm；左右留边 ${layout.margins.left}/${layout.margins.right}mm；视觉间距极差 ${layout.gapSpread}mm`,
+    structuralText,
+    structuralNotes,
     rows,
     total: yuan(bom.totalCents),
     notes: [
+      ...structuralNotes,
       `面板材料：${bom.panelMaterial.name}（${bom.panelMaterial.desc}）`,
       `亚克力拼版：${bom.nesting.sheetCount} 张 ${bom.sheet.spec}，利用率 ${(bom.nesting.utilization * 100).toFixed(1)}%`,
       `LED：布点长度 ${bom.led.perimeterTotalMm}mm，模组 ${bom.led.modules} 只，额定功率 ${bom.led.ratedW}W，建议电源 ${bom.led.suggestedPsu}`,
@@ -99,6 +118,7 @@ export function exportQuoteXls(project: Project, layout: LayoutResult, bom: BomR
     <tr><td>门头尺寸</td><td colspan="5">${esc(doc.panelText)}</td></tr>
     <tr><td>字体/排版</td><td colspan="5">${esc(doc.fontText)}</td></tr>
     <tr><td>排版结果</td><td colspan="5">${esc(doc.layoutText)}</td></tr>
+    <tr><td>结构核定</td><td colspan="5">${esc(doc.structuralText)}</td></tr>
     <tr><th>类别</th><th>规格/说明</th><th>数量</th><th>单位</th><th>单价(元)</th><th>金额(元)</th></tr>
     ${doc.rows
       .map(
@@ -135,6 +155,25 @@ export function exportProcessCardCsv(project: Project, layout: LayoutResult, bom
   lines.push(`门头,${project.layout.panel.wMm}×${project.layout.panel.hMm}mm 边框${project.layout.panel.frameMm}mm`)
   lines.push(`字体,${fontLabel} 字重${project.layout.settings.weight} 字号${layout.sizeMm}mm`)
   lines.push(`排版,${alignLabel(project.layout.settings.align)} 占宽${layout.occupiedW}mm 占高${layout.occupiedH}mm`)
+  lines.push('')
+  lines.push('结构安全核定')
+  if (bom.structuralReview && bom.structuralCurrent && bom.structuralResult.approved) {
+    const s = bom.structuralResult
+    lines.push(`结论版本,v${bom.structuralReview.version}`)
+    lines.push(`路线,${s.route === 'conservative' ? '保守档' : '计算档'}`)
+    lines.push(`材质厚度,${s.materialName} ${s.effectiveThicknessMm}mm`)
+    lines.push(`离地/顶部,${project.structural.clearanceMm}/${s.topHeightMm}mm`)
+    lines.push(`面积风力,${s.areaM2}㎡ ${s.demandKn}kN`)
+    lines.push(`加固等级,G${s.grade}`)
+    lines.push(`分格,${s.gridCols}×${s.gridRows}`)
+    lines.push(`拉结点,${s.tiePoints}套`)
+    s.requirements.forEach((r, i) => lines.push(`加固项${i + 1},${r.spec},${r.qty}${r.unit},${r.note}`))
+    lines.push(`复核人,${bom.structuralReview.reviewerTitle} ${bom.structuralReview.reviewer}`)
+    lines.push(`留痕,${bom.structuralReview.trace}`)
+    s.warnings.forEach((w) => lines.push(`结构提醒,${w}`))
+  } else {
+    lines.push('状态,未形成有效结构核定；不得下单')
+  }
   lines.push('')
   lines.push('字形工艺分析')
   lines.push('字符,字号mm,笔画块数,外轮廓周长mm,最细笔画mm,轮廓数,警告')

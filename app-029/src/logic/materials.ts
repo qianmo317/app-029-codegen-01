@@ -6,10 +6,11 @@
  */
 
 import materialsData from '../data/materials.json'
-import type { LedResult, Material, Project } from './types'
+import type { LedResult, Material, Mounting, Project, StructuralResult, StructuralReviewRecord } from './types'
 import type { LayoutResult, PlacedChar } from './layout'
 import { nestPieces, type CutItem, type NestingResult, type Piece } from './nesting'
 import { computeLed, type PsuPreset } from './led'
+import { activeStructuralReview, computeStructural, isStructuralReviewCurrent } from './structural'
 
 export interface SheetSpec {
   id: string
@@ -63,6 +64,37 @@ export interface PanelMaterialSpec {
   charLaborCents: number
 }
 
+export interface StructuralMaterialSpec {
+  id: string
+  name: string
+  thicknesses: number[]
+  minThicknessMm: number
+  factor: number
+  minGrade: 1 | 2 | 3 | 4
+  maxAreaM2: number
+  maxWidthMm: number
+  maxHeightMm: number
+  mountings: Mounting[]
+  note: string
+}
+
+export interface StructuralPreset {
+  basicWindPressureKpa: number
+  gradeDemandKn: [number, number, number, number]
+  maxAspectRatio: number
+  maxSlenderness: number
+  maxGridWidthMm: number
+  maxGridHeightMm: number
+  defaultClearanceMm: number
+  materials: StructuralMaterialSpec[]
+  keelPriceCentsPerM: number
+  bracePriceCentsPerM: number
+  postPriceCentsPerM: number
+  anchorPriceCents: number
+  tiePriceCents: number
+  structureLaborCentsPerM2: number
+}
+
 export interface Preset {
   version: string
   process: {
@@ -76,6 +108,7 @@ export interface Preset {
     warnTrackRatioLow: number
     warnTrackRatioHigh: number
   }
+  structural: StructuralPreset
   acrylicSheets: SheetSpec[]
   ledModules: LedModuleSpec[]
   psu: PsuPreset
@@ -100,6 +133,9 @@ export interface BomResult {
   blocked: boolean
   blockReasons: string[]
   panelMaterial: PanelMaterialSpec
+  structuralReview: StructuralReviewRecord | null
+  structuralCurrent: boolean
+  structuralResult: StructuralResult
 }
 
 export interface BomOptions {
@@ -158,6 +194,10 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
   const module = preset.ledModules.find((m) => m.id === project.ledModuleId) ?? preset.ledModules[0]
   const panelMaterial = preset.panelMaterials.find((m) => m.id === project.panelMaterialId) ?? preset.panelMaterials[0]
   const led = computeLed(layout.ledLengthMm, project.led, preset.psu)
+  const liveStructural = computeStructural(project, layout, preset.structural)
+  const structuralReview = activeStructuralReview(project.structural)
+  const structuralCurrent = structuralReview ? isStructuralReviewCurrent(structuralReview, liveStructural) : false
+  const structuralResult = structuralReview && structuralCurrent ? structuralReview.result : liveStructural
 
   const pieces = acrylicPieces(layout.chars)
   const nesting = nestPieces(pieces, sheet.wMm, sheet.hMm, sheet.kerfMm, true)
@@ -247,6 +287,27 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
       })
     }
   }
+
+  const addStructuralMaterials = (): void => {
+    if (!structuralReview || !structuralCurrent) return
+    const sp = preset.structural
+    const add = (spec: string, qty: number, unit: string, unitPriceCents: number): void => {
+      if (qty <= 0) return
+      materials.push({ kind: 'structure', spec, qty: Math.round(qty * 100) / 100, unit, unitPriceCents, amountCents: Math.round(qty * unitPriceCents) })
+    }
+    add(`结构加固 G${structuralResult.grade}：${structuralResult.keel.spec}`, structuralResult.keel.qty, '米', sp.keelPriceCentsPerM)
+    if (structuralResult.braces.qty > 0) add(structuralResult.braces.spec, structuralResult.braces.qty, '米', sp.bracePriceCentsPerM)
+    if (structuralResult.posts) add(structuralResult.posts.spec, structuralResult.posts.qty, '米', sp.postPriceCentsPerM)
+    add(structuralResult.anchors.spec, structuralResult.anchors.qty, structuralResult.anchors.unit, sp.anchorPriceCents)
+    add(
+      `结构安装/焊接/防锈（${structuralResult.route === 'conservative' ? '保守档' : '计算档'} v${structuralReview?.version ?? 0}，${structuralResult.reviewerTitle}）`,
+      structuralResult.areaM2,
+      '㎡',
+      sp.structureLaborCentsPerM2
+    )
+  }
+  addStructuralMaterials()
+
   // 5) 加工费
   for (const l of preset.labor) {
     if ((l.id === 'ledmount' || l.id === 'psuinstall') && !panelMaterial.useLed) continue
@@ -266,11 +327,17 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
 
   const totalCents = materials.reduce((s, m) => s + m.amountCents, 0)
   const thin = layout.glyphs.filter((g) => !g.missing && g.minStrokeMm > 0 && g.minStrokeMm < project.layout.settings.strokeLimitMm)
+  const structuralBlockReasons: string[] = []
+  if (!structuralReview) structuralBlockReasons.push('结构安全核定尚未出具结论：请先到「结构核定」页出一份正式结论')
+  else if (!structuralCurrent) structuralBlockReasons.push('结构安全核定结论已失效：门头尺寸、材质、安装方式或实际排版已变化，必须重核并确认新旧差异')
+  else if (structuralReview.result.blockReasons.length > 0) structuralBlockReasons.push(...structuralReview.result.blockReasons.map((r) => r.message))
+
   const blockReasons = [
     ...thin.map((g) => `「${g.char}」最细笔画 ${g.minStrokeMm}mm < 工艺下限 ${project.layout.settings.strokeLimitMm}mm`),
-    ...nesting.oversize.map((p) => `料件「${p.label}」${p.wMm}×${p.hMm}mm 超过板材尺寸 ${sheet.wMm}×${sheet.hMm}mm`)
+    ...nesting.oversize.map((p) => `料件「${p.label}」${p.wMm}×${p.hMm}mm 超过板材尺寸 ${sheet.wMm}×${sheet.hMm}mm`),
+    ...structuralBlockReasons
   ]
-  const blocked = (blockReasons.length > 0 && !opts.acknowledgeThinStroke) || nesting.oversize.length > 0
+  const blocked = (blockReasons.length > 0 && (!opts.acknowledgeThinStroke || thin.length === 0)) || nesting.oversize.length > 0 || structuralBlockReasons.length > 0
 
   return {
     materials,
@@ -284,7 +351,10 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
     outlinePerimeterM,
     blocked,
     blockReasons,
-    panelMaterial
+    panelMaterial,
+    structuralReview,
+    structuralCurrent,
+    structuralResult
   }
 }
 
@@ -325,6 +395,8 @@ export function compareMaterials(project: Project, layout: LayoutResult, preset:
   const accessoryCents = sumOf('glue')
   const laborTotal = sumOf('labor')
 
+  const structuralCents = sumOf('structure')
+
   return preset.panelMaterials.map((pm) => {
     // 当前选中方案：直接采用实际材料清单（与报价单完全一致，避免两套算法打架）
     if (pm.id === project.panelMaterialId) {
@@ -335,7 +407,7 @@ export function compareMaterials(project: Project, layout: LayoutResult, preset:
         panelCents: sumOf('acrylic'),
         ledCents,
         psuCents,
-        accessoryCents,
+        accessoryCents: accessoryCents + structuralCents,
         laborCents: laborTotal,
         totalCents: bom.totalCents
       }
@@ -347,7 +419,7 @@ export function compareMaterials(project: Project, layout: LayoutResult, preset:
     const useLed = pm.useLed
     const led = useLed ? ledCents : 0
     const psu = useLed ? psuCents : 0
-    const acc = useLed ? accessoryCents : Math.round(accessoryCents * 0.4)
+    const acc = (useLed ? accessoryCents : Math.round(accessoryCents * 0.4)) + structuralCents
     const labor = useLed ? laborTotal : Math.round(laborTotal * 0.55)
     return {
       id: pm.id,
