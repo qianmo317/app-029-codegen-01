@@ -10,6 +10,7 @@ import type { LedResult, Material, Project } from './types'
 import type { LayoutResult, PlacedChar } from './layout'
 import { nestPieces, type CutItem, type NestingResult, type Piece } from './nesting'
 import { computeLed, type PsuPreset } from './led'
+import { assessStructure, structuralMaterials, type StructuralResult } from './structural'
 
 export interface SheetSpec {
   id: string
@@ -100,6 +101,7 @@ export interface BomResult {
   blocked: boolean
   blockReasons: string[]
   panelMaterial: PanelMaterialSpec
+  structural: StructuralResult
 }
 
 export interface BomOptions {
@@ -158,6 +160,7 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
   const module = preset.ledModules.find((m) => m.id === project.ledModuleId) ?? preset.ledModules[0]
   const panelMaterial = preset.panelMaterials.find((m) => m.id === project.panelMaterialId) ?? preset.panelMaterials[0]
   const led = computeLed(layout.ledLengthMm, project.led, preset.psu)
+  const structural = assessStructure(project, layout)
 
   const pieces = acrylicPieces(layout.chars)
   const nesting = nestPieces(pieces, sheet.wMm, sheet.hMm, sheet.kerfMm, true)
@@ -264,13 +267,20 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
     })
   }
 
+  // 6) 结构加固（龙骨、斜撑、拉结/立柱）：只跟随当前有效结构核定；未通过/未重核时不报价
+  if (structural.pass && structural.approved) materials.push(...structuralMaterials(structural))
+
   const totalCents = materials.reduce((s, m) => s + m.amountCents, 0)
   const thin = layout.glyphs.filter((g) => !g.missing && g.minStrokeMm > 0 && g.minStrokeMm < project.layout.settings.strokeLimitMm)
+  const structuralReasons: string[] = []
+  if (!structural.pass) structuralReasons.push(...structural.blockReasons.map((r) => `结构核定不通过：${r}`))
+  else if (!structural.approved) structuralReasons.push('结构核定尚未出具当前尺寸的有效结论：请在「结构安全」页重核并签字（尺寸改后旧结论自动失效）')
   const blockReasons = [
     ...thin.map((g) => `「${g.char}」最细笔画 ${g.minStrokeMm}mm < 工艺下限 ${project.layout.settings.strokeLimitMm}mm`),
-    ...nesting.oversize.map((p) => `料件「${p.label}」${p.wMm}×${p.hMm}mm 超过板材尺寸 ${sheet.wMm}×${sheet.hMm}mm`)
+    ...nesting.oversize.map((p) => `料件「${p.label}」${p.wMm}×${p.hMm}mm 超过板材尺寸 ${sheet.wMm}×${sheet.hMm}mm`),
+    ...structuralReasons
   ]
-  const blocked = (blockReasons.length > 0 && !opts.acknowledgeThinStroke) || nesting.oversize.length > 0
+  const blocked = (thin.length > 0 && !opts.acknowledgeThinStroke) || nesting.oversize.length > 0 || structuralReasons.length > 0
 
   return {
     materials,
@@ -284,7 +294,8 @@ export function buildBom(project: Project, layout: LayoutResult, preset: Preset,
     outlinePerimeterM,
     blocked,
     blockReasons,
-    panelMaterial
+    panelMaterial,
+    structural
   }
 }
 

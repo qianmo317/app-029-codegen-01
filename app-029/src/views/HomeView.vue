@@ -7,7 +7,8 @@ import { buildBom } from '../logic/materials'
 import { compareMaterials } from '../logic/materials'
 import { bomGroupLabel } from '../logic/quote'
 import { createProject, deleteProject, duplicateProject, listProjects, loadPreset, loadPrefs, saveProject } from '../logic/store'
-import type { Align, Mounting, Project } from '../logic/types'
+import { STRUCTURAL_MATERIALS } from '../logic/structural'
+import type { Align, Mounting, Project, StructuralMaterialId, StructuralRoute } from '../logic/types'
 import { yuan } from '../logic/materials'
 
 const router = useRouter()
@@ -24,6 +25,10 @@ const draft = ref({
   hMm: 800,
   frameMm: 60,
   mounting: 'board' as Mounting,
+  groundClearanceMm: 3000,
+  structuralMaterialId: 'acrylic' as StructuralMaterialId,
+  structuralThicknessMm: 3,
+  structuralRoute: 'conservative' as StructuralRoute,
   text: '广告招牌制作',
   fontId: prefs.defaultFontId,
   weight: prefs.defaultWeight,
@@ -34,6 +39,17 @@ const draft = ref({
 
 const fonts = computed(() => listFonts())
 const weightOptions = computed(() => findFont(draft.value.fontId)?.weights.map((w) => w.weight) ?? [400])
+const structuralMaterials = STRUCTURAL_MATERIALS
+const structuralThicknesses = computed(
+  () => structuralMaterials.find((m) => m.id === draft.value.structuralMaterialId)?.thicknesses ?? []
+)
+watch(
+  () => draft.value.structuralMaterialId,
+  (id) => {
+    const list = structuralMaterials.find((m) => m.id === id)?.thicknesses ?? []
+    if (!list.includes(draft.value.structuralThicknessMm)) draft.value.structuralThicknessMm = list[0] ?? 0
+  }
+)
 
 function refresh(): void {
   projects.value = listProjects()
@@ -56,14 +72,18 @@ function create(): void {
     error.value = '请至少输入一个字符'
     return
   }
-  if (draft.value.wMm <= draft.value.frameMm * 2 || draft.value.hMm <= draft.value.frameMm * 2) {
+  const wMm = Math.round(draft.value.wMm)
+  const hMm = Math.round(draft.value.hMm)
+  const frameMm = Math.round(draft.value.frameMm)
+  const groundClearanceMm = Math.round(draft.value.groundClearanceMm)
+  if (wMm <= frameMm * 2 || hMm <= frameMm * 2) {
     error.value = '门头尺寸必须大于边框的两倍（有效安装区不能为负）'
     return
   }
   const p = createProject(draft.value.name.trim() || '新门头', {
-    wMm: draft.value.wMm,
-    hMm: draft.value.hMm,
-    frameMm: draft.value.frameMm
+    wMm,
+    hMm,
+    frameMm
   })
   p.layout.panel.mounting = draft.value.mounting
   p.layout.settings.fontId = draft.value.fontId
@@ -72,6 +92,12 @@ function create(): void {
   p.layout.settings.align = draft.value.align
   p.layout.settings.trackRatio = draft.value.trackRatio
   p.layout.settings.strokeLimitMm = preset.value.process.strokeLimitMm
+  if (p.structural) {
+    p.structural.groundClearanceMm = groundClearanceMm
+    p.structural.materialId = draft.value.structuralMaterialId
+    p.structural.thicknessMm = draft.value.structuralThicknessMm
+    p.structural.route = draft.value.structuralRoute
+  }
   p.layout.items = textToItems(text, [], p.layout.settings, draft.value.baseSizeMm)
   saveProject(p)
   ensureFont(p.layout.settings.fontId, p.layout.settings.weight).catch(() => undefined)
@@ -181,9 +207,9 @@ function applyUnified(): void {
         <div class="field">
           <label>总宽 × 总高（mm）</label>
           <div class="ctl">
-            <input type="number" v-model.number="draft.wMm" min="200" step="10" />
+            <input type="number" v-model.number="draft.wMm" min="200" step="1" />
             <span class="muted">×</span>
-            <input type="number" v-model.number="draft.hMm" min="100" step="10" />
+            <input type="number" v-model.number="draft.hMm" min="100" step="1" />
           </div>
         </div>
         <div class="field">
@@ -197,6 +223,30 @@ function applyUnified(): void {
               <option value="wall">贴墙安装</option>
               <option value="board">挂板安装</option>
               <option value="freestanding">落地立牌</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>牌底下沿离地（mm）</label>
+          <div class="ctl"><input type="number" v-model.number="draft.groundClearanceMm" min="0" step="100" /></div>
+        </div>
+        <div class="field">
+          <label>承重面板材质 / 厚度</label>
+          <div class="ctl">
+            <select v-model="draft.structuralMaterialId">
+              <option v-for="m in structuralMaterials" :key="m.id" :value="m.id">{{ m.name }}</option>
+            </select>
+            <select v-model.number="draft.structuralThicknessMm">
+              <option v-for="t in structuralThicknesses" :key="t" :value="t">{{ t }}mm</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>加固路线</label>
+          <div class="ctl">
+            <select v-model="draft.structuralRoute">
+              <option value="conservative">保守档（最不利包络，省复核，料多）</option>
+              <option value="calculated">计算档（按实际受力，省料，需复核担责）</option>
             </select>
           </div>
         </div>
@@ -243,7 +293,7 @@ function applyUnified(): void {
         </div>
         <p class="muted" style="margin: 8px 0 0">
           有效安装区 = 门头尺寸 − 2×边框 = {{ Math.max(0, draft.wMm - draft.frameMm * 2) }} ×
-          {{ Math.max(0, draft.hMm - draft.frameMm * 2) }}mm；字体全部本地打包，断网可用。
+          {{ Math.max(0, draft.hMm - draft.frameMm * 2) }}mm；建立后先到「结构安全」核定，通过并签字后材料与报价才会放行。
         </p>
       </section>
 

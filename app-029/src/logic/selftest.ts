@@ -10,6 +10,7 @@ import { computeLayout, defaultProject, textToItems, type LayoutResult } from '.
 import { assertBomSum, buildBom, compareMaterials, defaultPreset, type Preset } from './materials'
 import { nestPieces, type Piece } from './nesting'
 import { runBlockCount, type BlockCountResult } from './testRunner'
+import { assessStructure, issueStructuralConclusion } from './structural'
 import type { LayoutDef, Project } from './types'
 import type { Ring } from './geometry'
 import { pointInRings } from './geometry'
@@ -42,6 +43,17 @@ function makeProject(id: string, text: string, sizeMm: number, align: LayoutDef[
   p.layout.settings.align = align
   p.layout.items = textToItems(text, [], p.layout.settings, sizeMm)
   return p
+}
+
+function approveStructure(p: Project, lay: LayoutResult): void {
+  if (!p.structural) return
+  p.structural.materialId = 'steel'
+  p.structural.thicknessMm = 1.5
+  p.structural.acceptedBy = '自检负责人'
+  p.structural.reviewerName = '结构复核'
+  p.structural.reviewerRole = '结构负责人'
+  const r = assessStructure(p, lay)
+  if (r.pass) issueStructuralConclusion(p, r)
 }
 
 /** 沿水平/垂直截面取形状内部的弦长（与射线法完全独立的第二套测量） */
@@ -231,6 +243,7 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
     const r = computeLayout(p.layout)
     const thin = r.glyphs.filter((g) => g.minStrokeMm < p.layout.settings.strokeLimitMm)
     const warnOk = r.warnings.some((w) => w.includes('工艺下限'))
+    approveStructure(p, r)
     const bomBlocked = buildBom(p, r, preset)
     const bomOk = buildBom(p, r, preset, { acknowledgeThinStroke: true })
     checks.push({
@@ -310,6 +323,7 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
   {
     const p = makeProject('acc7', '广告招牌制作', 300)
     const lay: LayoutResult = computeLayout(p.layout, { autoSize: true })
+    approveStructure(p, lay)
     const bom = buildBom(p, lay, preset)
     const sum = assertBomSum(bom)
     const handSum = bom.materials.reduce((s, m) => s + m.amountCents, 0)
@@ -367,6 +381,7 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
   {
     const p = makeProject('acc9', '广告招牌制作', 300)
     const lay = computeLayout(p.layout, { autoSize: true })
+    approveStructure(p, lay)
     const bom = buildBom(p, lay, preset)
     const cmp = compareMaterials(p, lay, preset, bom)
     checks.push({
@@ -375,6 +390,71 @@ export async function runAcceptance(preset: Preset = defaultPreset): Promise<Acc
       pass: cmp.every((c) => c.totalCents === c.panelCents + c.ledCents + c.psuCents + c.accessoryCents + c.laborCents),
       detail: `${cmp.length} 种材质`,
       evidence: cmp.map((c) => `${c.name}：面板 ${(c.panelCents / 100).toFixed(2)} + LED ${(c.ledCents / 100).toFixed(2)} + 电源 ${(c.psuCents / 100).toFixed(2)} + 配件 ${(c.accessoryCents / 100).toFixed(2)} + 加工 ${(c.laborCents / 100).toFixed(2)} = ¥${(c.totalCents / 100).toFixed(2)}`)
+    })
+  }
+
+  // ---------- 11. 结构安全核定、拦截、翻档痕迹与 BOM 联动 ----------
+  {
+    const p = makeProject('acc11', '广告招牌制作', 300)
+    const lay = computeLayout(p.layout, { autoSize: true })
+    const conservative = assessStructure(p, lay)
+    if (p.structural) {
+      p.structural.route = 'conservative'
+      p.structural.acceptedBy = '现场负责人'
+      issueStructuralConclusion(p, conservative)
+    }
+    const approvedBom = buildBom(p, lay, preset)
+    const oldStructuralTotal = approvedBom.materials.filter((m) => m.kind === 'structural').reduce((s, m) => s + m.amountCents, 0)
+    p.layout.panel.wMm += 1
+    const staleLayout = computeLayout(p.layout, { autoSize: true })
+    const stale = assessStructure(p, staleLayout)
+    const staleBom = buildBom(p, staleLayout, preset)
+
+    const bad = makeProject('acc11b', '广告招牌制作', 300)
+    bad.layout.panel.mounting = 'freestanding'
+    if (bad.structural) {
+      bad.structural.materialId = 'film'
+      bad.structural.thicknessMm = 0.1
+    }
+    const badResult = assessStructure(bad, computeLayout(bad.layout, { autoSize: true }))
+    const calc = makeProject('acc11c', '广告招牌制作', 300)
+    if (calc.structural) {
+      calc.structural.route = 'calculated'
+      calc.structural.materialId = 'steel'
+      calc.structural.thicknessMm = 1.5
+      calc.structural.acceptedBy = '计算员'
+      calc.structural.reviewerName = '结构负责人'
+      calc.structural.reviewerRole = '设计单位'
+    }
+    const calcLay = computeLayout(calc.layout, { autoSize: true })
+    const calcResult = assessStructure(calc, calcLay)
+    issueStructuralConclusion(calc, calcResult)
+    const calcBom = buildBom(calc, calcLay, preset)
+
+    const ev = [
+      `保守档：3000×800 挂板、亚克力3mm → ${conservative.gradeLabel}，拉结点 ${conservative.tiePoints} 个，面积利用率 ${conservative.areaUtilization}%`,
+      `结构加固小计 ${oldStructuralTotal} 分；改宽 1mm 后 approved=${stale.approved}，BOM blocked=${staleBom.blocked}，理由：${staleBom.blockReasons.join('；')}`,
+      `贴膜独立立牌 pass=${badResult.pass}，拦截：${badResult.blockReasons.join('；')}`,
+      `计算档：风压 ${calcResult.windPressureKpa}kPa / 抗力 ${calcResult.capacityKpa}kPa，压力利用率 ${calcResult.pressureUtilization}%，${calcResult.gradeLabel}；签字后 BOM blocked=${calcBom.blocked}`
+    ]
+    const pass =
+      conservative.pass &&
+      conservative.grade === 3 &&
+      conservative.tiePoints === 10 &&
+      approvedBom.structural.activeRecord !== null &&
+      oldStructuralTotal > 0 &&
+      !stale.approved &&
+      staleBom.blocked &&
+      !badResult.pass &&
+      badResult.blockReasons.some((r) => r.includes('材质不匹配')) &&
+      calcResult.pass &&
+      !calcBom.blocked
+    checks.push({
+      id: 'A11',
+      title: '结构安全：按尺寸/安装/离地/材质厚度分档，拦截与反算生效；签字结论随实际占宽占高唯一，改 1mm 即失效并联动 BOM/报价',
+      pass,
+      detail: pass ? '通过' : '未通过',
+      evidence: ev
     })
   }
 

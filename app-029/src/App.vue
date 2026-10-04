@@ -21,6 +21,7 @@ const fontCount = computed(() => listFonts().length)
         <router-link to="/">新建门头</router-link>
         <router-link v-if="projectId" :to="`/edit/${projectId}`">排版编辑</router-link>
         <router-link v-if="projectId" :to="`/light/${projectId}`">LED 与电源</router-link>
+        <router-link v-if="projectId" :to="`/safety/${projectId}`">结构安全</router-link>
         <router-link v-if="projectId" :to="`/materials/${projectId}`">材料与拼版</router-link>
         <router-link v-if="projectId" :to="`/quote/${projectId}`">报价单</router-link>
         <router-link to="/fonts">本地字库</router-link>

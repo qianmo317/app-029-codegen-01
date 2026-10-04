@@ -24,6 +24,9 @@ const compare = computed(() =>
   project.value && layout.value && bom.value ? compareMaterials(project.value, layout.value, preset.value, bom.value) : []
 )
 
+const structuralBlocked = computed(() => bom.value?.blockReasons.some((r) => r.startsWith('结构核定')) ?? false)
+const thinBlocked = computed(() => bom.value?.blockReasons.some((r) => r.includes('最细笔画') || r.includes('超过板材尺寸')) ?? false)
+const canAcknowledgeThin = computed(() => thinBlocked.value && !structuralBlocked.value)
 const grouped = computed(() => {
   const b = bom.value
   if (!b) return []
@@ -61,8 +64,11 @@ function processCard(): void {
         <ul class="notes" style="color: inherit">
           <li v-for="(r, i) in bom.blockReasons" :key="i">{{ r }}</li>
         </ul>
-        <button class="primary" style="margin-top: 6px" @click="ack = true">已确认工艺风险，继续出报价</button>
-        <span class="muted" style="margin-left: 8px">未确认前不出报价单（避免做不出来的活）</span>
+        <button v-if="canAcknowledgeThin" class="primary" style="margin-top: 6px" @click="ack = true">已确认工艺风险，继续出报价</button>
+        <router-link v-if="structuralBlocked" :to="`/safety/${project.id}`" style="margin-top: 6px">
+          <button class="primary">去结构安全页重核/签字</button>
+        </router-link>
+        <span class="muted" style="margin-left: 8px">结构核定未通过或未签字前，加固项、材料清单与报价均不放行</span>
       </div>
 
       <div class="split">
@@ -87,6 +93,16 @@ function processCard(): void {
                 <option v-for="s in preset.acrylicSheets" :key="s.id" :value="s.id">{{ s.spec }}</option>
               </select>
             </div>
+          </div>
+
+          <h3 style="margin-top: 12px">结构加固用量（随核定结论联动）</h3>
+          <div class="kv-list" v-if="bom">
+            <span class="muted">核定结论</span><span :class="{ bad: bom.structural.blockReasons.length }">{{ bom.structural.gradeLabel }}{{ bom.structural.activeRecord ? '（已签字）' : '（未签字）' }}</span>
+            <span class="muted">拉结点/立柱点</span><span class="mono">{{ bom.structural.tiePoints }} 个（间距 ≤{{ bom.structural.gridSpacingMm }}mm）</span>
+            <span class="muted">龙骨/立柱</span>
+            <span class="mono">{{ bom.structural.mounting === 'freestanding' ? `${bom.structural.posts} 根 / ${bom.structural.postsM} 米` : `${bom.structural.railsM} 米` }}</span>
+            <span class="muted">斜撑</span><span class="mono">{{ bom.structural.braces }} 根</span>
+            <span class="muted">风压/风力</span><span class="mono">{{ bom.structural.windPressureKpa }}kPa · {{ bom.structural.windForceKn }}kN</span>
           </div>
 
           <h3 style="margin-top: 12px">材料用量要点</h3>

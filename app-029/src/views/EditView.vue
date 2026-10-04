@@ -271,6 +271,7 @@ function areaM2(w: number, h: number): string {
           </div>
           <div class="row" style="margin-top: 6px">
             <button @click="resetAllTracks">重置逐字微调</button>
+            <router-link :to="'/safety/' + project.id"><button>去结构安全重核</button></router-link>
             <span class="muted">排版耗时 {{ perfText }}</span>
           </div>
         </section>

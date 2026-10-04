@@ -21,6 +21,8 @@ export function bomGroupLabel(kind: string): string {
       return '电源'
     case 'glue':
       return '胶与配件'
+    case 'structural':
+      return '结构加固'
     default:
       return '加工费'
   }
@@ -52,6 +54,12 @@ export function buildQuoteDoc(project: Project, layout: LayoutResult, bom: BomRe
     unitPrice: yuan(m.unitPriceCents),
     amount: yuan(m.amountCents)
   }))
+  const structural = bom.structural
+  const signer = structural.activeRecord
+    ? `${structural.route === 'conservative' ? '现场负责人' : '编制/复核'}：${structural.activeRecord.acceptedBy}${
+        structural.activeRecord.reviewerName ? `；复核：${structural.activeRecord.reviewerName}（${structural.activeRecord.reviewerRole}）` : ''
+      }；痕迹：${structural.activeRecord.traceLocation}`
+    : '结构核定未签字，不得下单'
   return {
     title: '招牌字制作报价单',
     projectName: project.name,
@@ -65,12 +73,15 @@ export function buildQuoteDoc(project: Project, layout: LayoutResult, bom: BomRe
     rows,
     total: yuan(bom.totalCents),
     notes: [
+      `结构核定：${structural.gradeLabel}；${mountingLabel(project.layout.panel.mounting)}，牌底下沿离地 ${structural.groundClearanceMm}mm，牌顶 ${structural.topHeightMm}mm；${structural.material.name} ${structural.thicknessMm}mm`,
+      `加固用量：拉结点/立柱点 ${structural.tiePoints} 个，龙骨/立柱 ${structural.mounting === 'freestanding' ? structural.postsM : structural.railsM} 米，斜撑 ${structural.braces} 根；计算风压 ${structural.windPressureKpa}kPa、风荷载 ${structural.windForceKn}kN`,
+      signer,
       `面板材料：${bom.panelMaterial.name}（${bom.panelMaterial.desc}）`,
       `亚克力拼版：${bom.nesting.sheetCount} 张 ${bom.sheet.spec}，利用率 ${(bom.nesting.utilization * 100).toFixed(1)}%`,
       `LED：布点长度 ${bom.led.perimeterTotalMm}mm，模组 ${bom.led.modules} 只，额定功率 ${bom.led.ratedW}W，建议电源 ${bom.led.suggestedPsu}`,
       bom.led.note
     ].filter((s) => !!s),
-    footer: '本报价基于当前材料单价，有效期 30 天；含材料与加工费，不含安装与运输。'
+    footer: '本报价基于当前材料单价，有效期 30 天；含面板、结构加固材料及安装人工，不含运输与土建基础（特殊基础另计）。'
   }
 }
 
@@ -87,6 +98,11 @@ function download(filename: string, blob: Blob): void {
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function csvCell(v: string | number): string {
+  const s = String(v)
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
 }
 
 /** 导出 Excel（.xls，Excel/WPS 可直接打开） */
@@ -160,5 +176,19 @@ export function exportProcessCardCsv(project: Project, layout: LayoutResult, bom
   lines.push(`板材,${bom.sheet.spec}`)
   lines.push(`板数,${bom.nesting.sheetCount}`)
   lines.push(`利用率,${(bom.nesting.utilization * 100).toFixed(1)}%`)
+  const row = (...values: Array<string | number>): string => values.map(csvCell).join(',')
+  lines.push('')
+  lines.push('结构安全核定')
+  lines.push(row('核定等级', bom.structural.gradeLabel))
+  lines.push(row('安装与高度', `${mountingLabel(project.layout.panel.mounting)} 离地${bom.structural.groundClearanceMm}mm 牌顶${bom.structural.topHeightMm}mm`))
+  lines.push(row('材质', bom.structural.material.name))
+  lines.push(row('厚度', `${bom.structural.thicknessMm}mm`))
+  lines.push(row('风压风荷载', `${bom.structural.windPressureKpa}kPa`, `${bom.structural.windForceKn}kN`))
+  lines.push(row('拉结点数', bom.structural.tiePoints))
+  lines.push(row('龙骨或立柱', `${bom.structural.mounting === 'freestanding' ? bom.structural.postsM : bom.structural.railsM}米`))
+  lines.push(row('斜撑', `${bom.structural.braces}根`))
+  lines.push(row('核定签字', `${bom.structural.activeRecord?.acceptedBy ?? '未签字'}${bom.structural.activeRecord?.reviewerName ? ` 复核${bom.structural.activeRecord.reviewerName}` : ''}`))
+  lines.push(row('痕迹位置', bom.structural.activeRecord?.traceLocation ?? '未存档'))
+  for (const w of bom.structural.warnings) lines.push(row('结构提醒', w))
   download(`${project.name || '招牌'}工艺卡.csv`, new Blob([`\ufeff${lines.join('\n')}`], { type: 'text/csv;charset=utf-8' }))
 }

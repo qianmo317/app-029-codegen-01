@@ -10,6 +10,7 @@ import { getGlyphGeom, type FontFamily } from './fontLoader'
 import { emptySamples, minSetDistance } from './geometry'
 import type { GlyphGeom } from './glyphAnalysis'
 import type { Align, CharItem, GlyphInfo, LayoutDef, LayoutSettings, Project, SignPanel } from './types'
+import { defaultStructural } from './structural'
 
 export interface PlacedChar {
   index: number
@@ -523,6 +524,7 @@ export function defaultProject(id: string, panel?: Partial<SignPanel>): Project 
     panelMaterialId: 'acrylic_led',
     sheetId: 'acr-1220x2440x3',
     ledModuleId: 'led-12v-072-60',
+    structural: defaultStructural(),
     createdAt: Date.now(),
     updatedAt: Date.now()
   }

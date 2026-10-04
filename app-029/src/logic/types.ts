@@ -6,6 +6,56 @@
 export type Mounting = 'wall' | 'board' | 'freestanding'
 export type Align = 'left' | 'center' | 'right' | 'justify'
 export type CharMode = 'solid' | 'outline'
+export type StructuralRoute = 'conservative' | 'calculated'
+export type StructuralMaterialId = 'film' | 'pvc' | 'acrylic' | 'acm' | 'steel'
+
+export interface StructuralConfig {
+  /** 牌底下沿离地高度，mm */
+  groundClearanceMm: number
+  /** 承重面板厚度，mm */
+  thicknessMm: number
+  materialId: StructuralMaterialId
+  route: StructuralRoute
+  /** 保守档：现场负责人；计算档：编制人 */
+  acceptedBy: string
+  reviewerName: string
+  reviewerRole: string
+  traceLocation: string
+  history: StructuralRecord[]
+}
+
+export interface StructuralRecord {
+  id: string
+  at: number
+  pass: boolean
+  route: StructuralRoute
+  fingerprint: string
+  acceptedBy: string
+  reviewerName: string
+  reviewerRole: string
+  traceLocation: string
+  input: {
+    wMm: number
+    hMm: number
+    occupiedWMm: number
+    occupiedHMm: number
+    mounting: Mounting
+    groundClearanceMm: number
+    topHeightMm: number
+    thicknessMm: number
+    materialId: StructuralMaterialId
+  }
+  summary: {
+    grade: number
+    gradeLabel: string
+    tiePoints: number
+    windPressureKpa: number
+    windForceKn: number
+    areaM2: number
+    blockReasons: string[]
+    warnings: string[]
+  }
+}
 
 /** 门头面板参数；frameMm = 铝塑板边框宽度，有效安装区 = 面板尺寸 - 2×边框 */
 export interface SignPanel {
@@ -73,7 +123,7 @@ export interface LedResult {
   psuUnitW: number
 }
 
-export type MaterialKind = 'acrylic' | 'led_module' | 'psu' | 'glue' | 'labor'
+export type MaterialKind = 'acrylic' | 'led_module' | 'psu' | 'glue' | 'labor' | 'structural'
 
 export interface Material {
   kind: MaterialKind
@@ -126,6 +176,7 @@ export interface Project {
   panelMaterialId: string
   sheetId: string
   ledModuleId: string
+  structural?: StructuralConfig
   createdAt: number
   updatedAt: number
 }

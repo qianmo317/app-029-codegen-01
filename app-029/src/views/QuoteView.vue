@@ -35,6 +35,7 @@ const sum = computed(() => (bom.value ? assertBomSum(bom.value) : null))
 const compare = computed(() =>
   project.value && layout.value && bom.value ? compareMaterials(project.value, layout.value, preset.value, bom.value) : []
 )
+const structuralBlocked = computed(() => bom.value?.blockReasons.some((r) => r.startsWith('结构核定')) ?? false)
 
 function printNow(): void {
   printed.value = true
@@ -75,7 +76,10 @@ function toCsv(): void {
 
       <div v-if="bom?.blocked" class="banner bad no-print">
         <b>工艺风险拦截：</b>{{ bom.blockReasons.join('；') }}
-        <button class="primary" style="margin-left: 8px" @click="ack = true">已确认风险，继续出报价</button>
+        <button class="primary" v-if="!structuralBlocked" style="margin-left: 8px" @click="ack = true">已确认工艺风险，继续出报价</button>
+        <router-link v-if="structuralBlocked && project" :to="`/safety/${project.id}`" style="margin-left: 8px">
+          <button class="primary">去结构安全页重核</button>
+        </router-link>
       </div>
       <div v-else-if="ack" class="banner warn no-print">已确认工艺风险：最细笔画低于工艺下限的字符按加粗/换字体处理后再下单。</div>
 
